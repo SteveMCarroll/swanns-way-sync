@@ -1,0 +1,17 @@
+{
+  "name": "swanns-way-sync",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cross-medium reading map for Proust's Swann's Way: landmark guideposts linking the Lydia Davis (Penguin) and Moncrieff (Modern Library) editions to the audiobook. Reading aid only \u2014 no book text or audio is reproduced.",
+  "type": "module",
+  "scripts": {
+    "check": "node tools/check-no-source.mjs",
+    "build": "npm run check && eleventy",
+    "build:docs": "npm run check && eleventy --pathprefix=/swanns-way-sync/ --output=docs && node -e \"import('node:fs').then(fs=>fs.writeFileSync('docs/.nojekyll',''))\"",
+    "dev": "npm run check && eleventy --serve --quiet",
+    "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('_site', { recursive: true, force: true }))\""
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0"
+  }
+}

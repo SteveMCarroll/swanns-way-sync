@@ -1,0 +1,82 @@
+---
+layout: layouts/base.njk
+title: Landmarks
+---
+<section class="intro">
+  <h1>Switch between paper, ebook &amp; audio</h1>
+  <p>
+    <em>Swann&rsquo;s Way</em> has almost no chapter breaks, so this is a grid of
+    {{ landmarks.landmarks | length }} evenly spaced <strong>landmarks</strong> (~10&nbsp;minutes of
+    audio apart). Each one gives you the spot in every edition.
+  </p>
+  <p class="how">
+    <strong>How to use:</strong> find the nearest landmark, jump the audiobook to its
+    <em>time</em>, or open the page in your book and <em>search the opening words</em> to
+    land on the exact paragraph.
+  </p>
+  <dl class="legend">
+    <dt>&#9201;&#65039; Audio</dt><dd>timestamp in the m4b (HH:MM:SS) and track #</dd>
+    <dt>Davis</dt><dd>page in the physical Penguin Classics / Kindle Deluxe</dd>
+    <dt>Moncrieff</dt><dd>page in the Modern Library edition (exact)</dd>
+  </dl>
+</section>
+
+<div class="toolbar">
+  <input id="filter" type="search" placeholder="Filter by word, page or time&hellip;"
+         aria-label="Filter landmarks" autocomplete="off">
+  <nav class="jump" aria-label="Jump to part">
+    {%- for g in landmarks.landmarks | groupByPart %}
+    <a href="#part-{{ loop.index }}">{{ g.part }}</a>
+    {%- endfor %}
+  </nav>
+</div>
+
+{%- for g in landmarks.landmarks | groupByPart %}
+<section class="part" id="part-{{ loop.index }}">
+  <h2 class="part-title">{{ g.part }} <span class="count">{{ g.items | length }}</span></h2>
+  <div class="lm-list">
+    {%- for lm in g.items %}
+    <article class="lm" data-text="{{ lm.label }} {{ lm.ml_incipit }} {{ lm.dv_incipit }} p{{ lm.dv_phys_page }} p{{ lm.dv_kindle_page }} m{{ lm.ml_page }} {{ lm.audio_time }} track {{ lm.audio_track }}">
+      <div class="lm-head">
+        <span class="num">{{ lm.n }}</span>
+        <span class="label">{% if lm.scene %}{{ lm.scene }}{% else %}{{ g.part }} &middot; {{ loop.index }}{% endif %}</span>
+        <a class="time" href="#" title="audio position">&#9201;&#65039; {{ lm.audio_time }}<small> &middot; tk{{ lm.audio_track }}</small></a>
+      </div>
+      <div class="chips">
+        <span class="chip davis">Davis p.<strong>{{ lm.dv_phys_page }}</strong><small>paper</small></span>
+        <span class="chip davis alt">Davis p.<strong>{{ lm.dv_kindle_page }}</strong><small>Kindle</small></span>
+        <span class="chip monc">Moncrieff p.<strong>{{ lm.ml_page }}</strong></span>
+      </div>
+      <div class="incipits">
+        <p class="inc"><span class="ed">Davis:</span> &ldquo;{{ lm.dv_incipit }}&hellip;&rdquo;</p>
+        <p class="inc"><span class="ed">Moncrieff:</span> &ldquo;{{ lm.ml_incipit }}&hellip;&rdquo;</p>
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+</section>
+{%- endfor %}
+
+<p class="downloads">
+  <a href="{{ '/correspondence.csv' | url }}">Download full table (CSV)</a>
+</p>
+
+<script>
+(function () {
+  var input = document.getElementById('filter');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.lm'));
+  function apply() {
+    var q = input.value.trim().toLowerCase();
+    var sections = {};
+    cards.forEach(function (c) {
+      var hit = !q || c.getAttribute('data-text').toLowerCase().indexOf(q) !== -1;
+      c.style.display = hit ? '' : 'none';
+    });
+    document.querySelectorAll('.part').forEach(function (s) {
+      var any = s.querySelector('.lm:not([style*="none"])');
+      s.style.display = any ? '' : 'none';
+    });
+  }
+  input.addEventListener('input', apply);
+})();
+</script>

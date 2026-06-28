@@ -1,0 +1,30 @@
+# Copyrighted source material — never commit
+*.epub
+*.m4b
+*.m4a
+*.mp3
+*.aac
+*.wav
+*.flac
+
+# Original distributor cue (source artifact) — our generated cue lives in out/
+/Swann's Way.cue
+
+# Working data
+_extract/
+out/
+tools/transcript.json
+tools/transcript.json.partial
+tools/_track_starts.json
+tools/_clip.wav
+tools/transcribe.log
+tools/*.log
+tools/_*.py
+
+# Build / deps
+node_modules/
+_site/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1b1c" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fdfaf4" media="(prefers-color-scheme: light)">
+  <title>{% if title %}{{ title }} &middot; {% endif %}{{ site.title }}</title>
+  <meta name="description" content="{{ description or site.description }}">
+  <link rel="stylesheet" href="{{ '/css/style.css' | url }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E&#128214;%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <span class="site-title"><span aria-hidden="true">&#128214;</span>&nbsp;{{ site.title }}</span>
+  </header>
+
+  <main id="main">
+    {{ content | safe }}
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Personal reading aid for <em>Swann&rsquo;s Way</em>. Page numbers and timestamps are
+      navigation guideposts only; no book text or audio is reproduced. Opening words are
+      short search locators.
+    </p>
+  </footer>
+</body>
+</html>
