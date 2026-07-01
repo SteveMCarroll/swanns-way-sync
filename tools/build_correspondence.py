@@ -386,6 +386,12 @@ def write_outputs(rows):
           f"out/*.cue, out/*.ffmetadata")
 
 
+def chapter_title(r):
+    """Landmark label with page numbers so you can switch mediums from the chapter list."""
+    return (f"{r['label']} \u2014 Davis p{r['dv_phys_page']} "
+            f"(K p{r['dv_kindle_page']}) \u00b7 ML p{r['ml_page']}")
+
+
 def write_cue(rows):
     lines = ['FILE "Swann\'s Way.m4b" MP3']
     for r in rows:
@@ -395,7 +401,7 @@ def write_cue(rows):
         ff = int(round((t - int(t)) * 75))
         if ff >= 75:
             ff = 74
-        title = f'{r["label"]}'.replace('"', "'")
+        title = chapter_title(r).replace('"', "'")
         lines.append(f"  TRACK {r['n']:02d} AUDIO")
         lines.append(f'    TITLE "{title}"')
         lines.append(f"    INDEX 01 {mm}:{ss:02d}:{ff:02d}")
@@ -411,9 +417,11 @@ def write_ffmetadata(rows):
             else int(AUDIO_DURATION * 1000)
         if end_ms <= start_ms:
             end_ms = start_ms + 1000
+        title = chapter_title(r).replace("\\", "\\\\").replace("=", "\\=") \
+                                .replace(";", "\\;").replace("#", "\\#")
         out += ["[CHAPTER]", "TIMEBASE=1/1000",
                 f"START={start_ms}", f"END={end_ms}",
-                f"title={r['label']}"]
+                f"title={title}"]
     (OUT_DIR / "Swanns_Way_chapters.ffmetadata").write_text("\n".join(out) + "\n",
                                                             encoding="utf-8")
 
