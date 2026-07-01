@@ -31,13 +31,16 @@ def main():
     bp = BatchedInferencePipeline(model=model)
     print(f"[{time.strftime('%H:%M:%S')}] transcribing {AUDIO} ...", flush=True)
     segments, info = bp.transcribe(AUDIO, beam_size=1, batch_size=16,
-                                   language="en")
+                                   language="en", word_timestamps=True)
     total = float(info.duration)
     out = []
     last_beat = time.time()
     for s in segments:
+        words = []
+        for w in (s.words or []):
+            words.append({"w": w.word, "s": round(w.start, 2), "e": round(w.end, 2)})
         out.append({"start": round(s.start, 2), "end": round(s.end, 2),
-                    "text": s.text.strip()})
+                    "text": s.text.strip(), "words": words})
         now = time.time()
         if now - last_beat > 20:
             pct = 100.0 * s.end / total if total else 0

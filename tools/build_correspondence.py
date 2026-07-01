@@ -301,7 +301,9 @@ def assign_audio(rows):
     from rapidfuzz import fuzz
     data = json.loads(TRANSCRIPT.read_text(encoding="utf-8"))
     segs = data["segments"]
-    # continuous word array with interpolated times
+    # ROBUST matching space: one word per segment-text token, time interpolated evenly
+    # within the segment. This is the reliable seeding/monotonic search used to locate
+    # each landmark. (Word-level tokens desync the stream and break the search.)
     words, times = [], []
     for s in segs:
         ws = norm_words(s["text"])
@@ -312,22 +314,77 @@ def assign_audio(rows):
             times.append(s["start"] + (i + 0.5) / len(ws) * (s["end"] - s["start"]))
     joined = words
     N = len(joined)
+    # PRECISION space: exact per-word start times, for refining a located time to the
+    # precise spoken word. Parallel arrays sorted by time.
+    wl_tok, wl_t = [], []
+    sent_t = []                  # times of words that begin a new sentence
+    prev_end_sentence = True
+    for s in segs:
+        for wd in (s.get("words") or []):
+            raw = wd["w"].strip()
+            toks = norm_words(wd["w"])
+            for j, tok in enumerate(toks):
+                wl_tok.append(tok)
+                wl_t.append(float(wd["s"]))
+                if prev_end_sentence and j == 0:
+                    sent_t.append(float(wd["s"]))
+                    prev_end_sentence = False
+            if raw and raw[-1] in ".!?":
+                prev_end_sentence = True
+    sent_t.sort()
+
+    def refine_time(approx_t, phrase, win=30, thresh=60):
+        """Best word-level position of `phrase` within +-win seconds of approx_t.
+        Returns (time_of_first_matched_word, matched?)."""
+        if not wl_t or not phrase:
+            return approx_t, False
+        import bisect as _b
+        L = len(phrase)
+        lo = _b.bisect_left(wl_t, approx_t - win)
+        hi = min(len(wl_tok) - L, _b.bisect_left(wl_t, approx_t + win))
+        target = " ".join(phrase)
+        best, bi = -1, -1
+        for i in range(lo, hi + 1):
+            sc = fuzz.ratio(" ".join(wl_tok[i:i + L]), target)
+            if sc > best:
+                best, bi = sc, i
+        if bi >= 0 and best >= thresh:
+            return wl_t[bi], True
+        return approx_t, False
+
+    def snap_sentence(t):
+        """Snap a time back to the sentence start containing t (backward only, and only
+        if it's close). Never jump forward to a later sentence past the matched phrase."""
+        if not sent_t:
+            return t
+        import bisect as _b
+        k = _b.bisect_right(sent_t, t + 0.05)
+        if k > 0 and 0 <= t - sent_t[k - 1] <= 6:
+            return sent_t[k - 1]
+        return t
+
     total_ml = max(r["ml_word_start"] for r in rows) + 1
     rate = N / total_ml          # transcript words per moncrieff word (~1.09)
-    anchor_ml, anchor_idx = 0, 0  # last confirmed (ml_word, transcript_idx)
+    anchor_ml, anchor_idx = 0, 0  # last CONFIRMED (ml_word, transcript_idx)
     last_idx = 0
     matched = 0
+    HALF = 5000                  # search half-window around the projected seed
     for r in rows:
         phrase = norm_words(r.get("ml_match") or r["ml_incipit"])
         L = len(phrase)
         if L == 0:
             continue
-        # seed locked to last confirmed match, projected by local rate
+        # Seed the search at the position projected from the last confirmed match by the
+        # global word rate, and search only a moderate window around it. The seed is
+        # essential: many phrases (e.g. "steeple of Saint-Hilaire") recur later in the
+        # text, so an unbounded forward search jumps to a spurious recurrence and
+        # cascades. The window is wide enough to absorb local pace drift but narrow
+        # enough to exclude far-off recurrences.
         seed = int(anchor_idx + (r["ml_word_start"] - anchor_ml) * rate)
-        lo = max(last_idx, seed - 4000)
-        hi = min(N - L, seed + 4000)
+        lo = max(last_idx, seed - HALF)
+        hi = min(N - L, seed + HALF)
         if hi <= lo:
-            lo, hi = last_idx, min(N - L, last_idx + 8000)
+            lo, hi = last_idx, min(N - L, last_idx + 2 * HALF)
         target = " ".join(phrase)
         best_score, best_i = -1, -1
         i = lo
@@ -338,26 +395,45 @@ def assign_audio(rows):
                 best_score, best_i = sc, i
             i += 1
         if best_score >= 68 and best_i >= 0:
-            r["audio_seconds"] = round(times[best_i], 1)
+            t, _ = refine_time(times[best_i], phrase)
+            r["audio_seconds"] = round(t, 1)
             r["audio_method"] = f"matched({best_score:.0f})"
             last_idx = best_i
             anchor_ml, anchor_idx = r["ml_word_start"], best_i  # recalibrate
             matched += 1
         else:
+            # Sub-threshold: this landmark's wording differs too much (older-Moncrieff
+            # audio vs revised epub) to trust the best in-window candidate as its true
+            # position. Do NOT move the anchor/last_idx (a wrong re-anchor cascades and
+            # strands every later landmark). Leave it for neighbor interpolation below.
             r["audio_method"] = f"estimate(miss {best_score:.0f})"
+        if os.environ.get("DBG_ASSIGN"):
+            print(f"  best={best_score:5.1f} bi={best_i:7d} last_idx->{last_idx:7d} lo={lo} hi={hi} ph={' '.join(phrase)!r}")
         r["audio_track"] = track_for(r["audio_seconds"])
-    # interpolate unmatched landmarks between matched neighbors (by ml word position)
+    # interpolate any still-unmatched landmarks between matched neighbors, then snap
+    # the interpolated time back to the nearest sentence start so a landmark never lands
+    # mid-sentence in the audio (paragraph breaks fall on sentence boundaries).
+    import bisect
+    # For each still-unmatched landmark, interpolate its time between confident
+    # neighbors to get an approximate location, then run a WIDE localized phrase search
+    # (+-150s) to recover its true position despite older-Moncrieff wording drift, and
+    # finally snap back to the sentence start so it never lands mid-sentence.
     for idx, r in enumerate(rows):
         if "matched" in r["audio_method"]:
             continue
-        lo_i = next((j for j in range(idx - 1, -1, -1) if "matched" in rows[j]["audio_method"]), None)
-        hi_i = next((j for j in range(idx + 1, len(rows)) if "matched" in rows[j]["audio_method"]), None)
+        lo_i = next((j for j in range(idx - 1, -1, -1)
+                     if "matched" in rows[j]["audio_method"]), None)
+        hi_i = next((j for j in range(idx + 1, len(rows))
+                     if "matched" in rows[j]["audio_method"]), None)
         if lo_i is not None and hi_i is not None:
             w0, w1 = rows[lo_i]["ml_word_start"], rows[hi_i]["ml_word_start"]
             t0, t1 = rows[lo_i]["audio_seconds"], rows[hi_i]["audio_seconds"]
             frac = (r["ml_word_start"] - w0) / (w1 - w0) if w1 > w0 else 0.5
-            r["audio_seconds"] = round(t0 + frac * (t1 - t0), 1)
-            r["audio_method"] += "/interp"
+            approx_t = t0 + frac * (t1 - t0)
+            phrase = norm_words(r.get("ml_match") or r["ml_incipit"])
+            t, ok = refine_time(approx_t, phrase, win=60, thresh=55)
+            r["audio_seconds"] = round(snap_sentence(t), 1)
+            r["audio_method"] += "/loc" if ok else "/interp"
             r["audio_track"] = track_for(r["audio_seconds"])
     for i in range(1, len(rows)):
         if rows[i]["audio_seconds"] < rows[i - 1]["audio_seconds"]:
