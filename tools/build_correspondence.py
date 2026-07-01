@@ -37,6 +37,32 @@ DAVIS_PAGES = {
     "Place-Names":      {"phys": (397, 444), "kindle": (476, 527)},
 }
 
+# The Moncrieff epub carries embedded print-page anchors from an older edition whose
+# body starts at "page 1" (~603pp of novel text). The user reads the Modern Library
+# *Kindle* edition, whose ToC pages differ (front matter counts; text is denser):
+#   Combray 27, Swann in Love 257, Place-Names 501, Notes 557.
+# Remap the epub anchor page onto the Kindle pagination, piecewise-linear per Part,
+# anchored on the epub's own part-boundary pages.
+#   part: (epub_start, epub_next_start, kindle_start, kindle_next_start)
+ML_KINDLE = {
+    "Combray":       (1,   265, 27,  257),
+    "Swann in Love": (265, 545, 257, 501),
+    "Place-Names":   (545, 603, 501, 557),
+}
+
+
+def ml_kindle_page(part, epub_page):
+    """Convert an epub print-anchor page to the Modern Library Kindle page."""
+    if epub_page is None or part not in ML_KINDLE:
+        return epub_page
+    e0, e1, k0, k1 = ML_KINDLE[part]
+    if e1 == e0:
+        return k0
+    frac = (epub_page - e0) / (e1 - e0)
+    frac = max(0.0, min(1.0, frac))
+    return int(round(k0 + frac * (k1 - k0)))
+
+
 PART_ORDER = ["Combray", "Swann in Love", "Place-Names"]
 PART_SHORT = {"Combray": "Combray", "Swann in Love": "Swann", "Place-Names": "Place-Names"}
 
@@ -243,7 +269,7 @@ def build():
             "scene": hint,
             "ml_incipit": incipit(lm.text),
             "ml_match": " ".join(lm.text.split()[:12]),  # internal, for audio matching
-            "ml_page": lm.page,
+            "ml_page": ml_kindle_page(pt, lm.page),
             "dv_incipit": incipit(dpar.text),
             "dv_phys_page": phys,
             "dv_kindle_page": kindle,

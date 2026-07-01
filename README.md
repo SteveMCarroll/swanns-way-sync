@@ -10,7 +10,7 @@ grid of ~130 **landmarks** spaced about **10 minutes of audio** apart. Each land
 
 - the **audio timestamp** (HH:MM:SS) and track number in the m4b,
 - the **Davis** page in both the physical Penguin Classics and the Kindle Deluxe edition,
-- the **Moncrieff** page in the Modern Library edition (exact),
+- the **Moncrieff** page in the Modern Library **Kindle** edition,
 - the first ~7 words of the paragraph in **both** translations, as a search locator.
 
 The live site: **https://stevemcarroll.github.io/swanns-way-sync/**
@@ -37,6 +37,9 @@ committed** (a copyright firewall enforces this).
   best shares proper nouns (Swann, Odette, Vinteuil&hellip;) with the Moncrieff paragraph.
 - **Davis pages** are interpolated per sub-part from the two editions&rsquo; tables of
   contents (physical: Combray 3 / 49, Swann 193, Place-Names 397; Kindle: 29 / 81 / 245 / 476).
+- **Moncrieff pages** map the epub&rsquo;s embedded print-anchor pages onto the Modern
+  Library **Kindle** pagination (Combray 27, Swann in Love 257, Place-Names 501), piecewise
+  linear per Part &mdash; the epub&rsquo;s own anchors number an older, longer edition.
 
 ## Regenerate
 
