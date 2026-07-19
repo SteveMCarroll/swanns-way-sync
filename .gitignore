@@ -15,7 +15,10 @@ _extract/
 out/
 tools/transcript.json
 tools/transcript.json.partial
+tools/transcript_bg.json
+tools/transcript_bg.json.partial
 tools/_track_starts.json
+tools/_bg_track_starts.json
 tools/_clip.wav
 tools/transcribe.log
 tools/*.log

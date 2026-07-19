@@ -14,6 +14,10 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <span class="site-title"><span aria-hidden="true">&#128214;</span>&nbsp;{{ site.title }}</span>
+    <nav class="vol-nav" aria-label="Volumes">
+      <a href="{{ '/' | url }}"{% if page.url == '/' %} aria-current="page"{% endif %}>Swann&rsquo;s Way</a>
+      <a href="{{ '/budding-grove/' | url }}"{% if '/budding-grove/' in page.url %} aria-current="page"{% endif %}>Within a Budding Grove</a>
+    </nav>
   </header>
 
   <main id="main">
@@ -22,9 +26,9 @@
 
   <footer class="site-footer">
     <p>
-      Personal reading aid for <em>Swann&rsquo;s Way</em>. Page numbers and timestamps are
-      navigation guideposts only; no book text or audio is reproduced. Opening words are
-      short search locators.
+      Personal reading aid for Proust&rsquo;s <em>In Search of Lost Time</em>. Page numbers
+      and timestamps are navigation guideposts only; no book text or audio is reproduced.
+      Opening words are short search locators.
     </p>
   </footer>
 </body>

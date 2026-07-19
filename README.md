@@ -89,6 +89,41 @@ pwsh tools/make_chaptered_m4b.ps1
 Smart Audiobook Player reads the embedded chapters; alternatively drop the `.cue` next to the
 audio file.
 
+## Volume 2 &mdash; *Within a Budding Grove*
+
+The same pipeline is applied to volume 2 (**Moncrieff / Modern Library**, 2-volume OCR
+edition &mdash; no Penguin/Davis this time). Page **148 &rarr; /budding-grove/**, data in
+`src/_data/budding_grove.json`.
+
+| Step | Tool | Output |
+|---|---|---|
+| Concatenate the 20 audio discs into one m4b | ffmpeg | `out/Within a Budding Grove.m4b` |
+| Transcribe with timestamps | faster-whisper (GPU) | `tools/transcript_bg.json` |
+| Parse the OCR epub into page records + exact print pages | `tools/epub_parse_bg.py` | in-memory |
+| Pick landmarks, assign pages, fuzzy-match audio, snap to paragraph openings | `tools/build_correspondence_bg.py` | `src/_data/budding_grove.json`, `correspondence_bg.csv`, `out/BuddingGrove_*.cue/.ffmetadata` |
+| Embed 138 chapters (copy, no re-encode) | ffmpeg | `out/Within a Budding Grove (chaptered).m4b` |
+
+### Vol-2 method notes
+
+- **Paragraph-boundary breaks.** This OCR epub has no paragraph markup (one `<p>` per printed
+  page) and the page text is too garbled to yield clean openings. So each landmark's break is
+  snapped to the nearest **audiobook paragraph boundary** &mdash; a narration pause &ge;1.4&nbsp;s
+  that follows a sentence end, opens on a capitalised word, and is not Audible/disc boilerplate.
+  The displayed incipit is taken from the **transcript** at that point (Whisper capitalises
+  sentence starts and reads the book verbatim); the epub page is refined only when it stays
+  consistent with the already-matched page.
+- **Missing audio.** This particular rip is missing two stretches of text &mdash; Part&nbsp;II
+  **pp.99&ndash;120** and **pp.267&ndash;303** (the narration skips straight across them,
+  confirmed against the transcript). Landmarks inside those ranges are dropped and a clearly
+  labelled **&#9888; gap chapter** is inserted at each skip, both in the m4b and on the web page.
+
+```powershell
+& "$env:VENV\python.exe" tools/build_correspondence_bg.py
+ffmpeg -y -v error -i "out/Within a Budding Grove.m4b" `
+  -i "out/BuddingGrove_chapters.ffmetadata" -map_metadata 1 -map_chapters 1 -c copy `
+  "out/Within a Budding Grove (chaptered).m4b"
+```
+
 ## Copyright
 
 This repository is a personal reading aid. It never stores or reproduces the copyrighted

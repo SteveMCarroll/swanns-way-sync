@@ -33,6 +33,15 @@ body {
   border-bottom: 1px solid var(--line); padding: .7rem 1rem;
 }
 .site-title { font-weight: 700; letter-spacing: .2px; }
+.vol-nav { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.vol-nav a {
+  font-size: .85rem; text-decoration: none; color: var(--accent);
+  border: 1px solid var(--line); border-radius: 999px; padding: .2rem .7rem;
+  background: var(--card);
+}
+.vol-nav a[aria-current="page"] {
+  color: #fff; background: var(--accent); border-color: var(--accent);
+}
 main { max-width: 880px; margin: 0 auto; padding: 1rem 1rem 3rem; }
 h1 { font-size: 1.5rem; line-height: 1.2; margin: .3rem 0 .6rem; }
 .intro p { margin: .4rem 0; }
@@ -107,6 +116,22 @@ h1 { font-size: 1.5rem; line-height: 1.2; margin: .3rem 0 .6rem; }
 }
 .inc:first-child .ed { color: var(--davis); }
 .inc:last-child .ed { color: var(--monc); }
+
+/* missing-audio gap markers */
+.intro .how.gap-warn {
+  background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316;
+  border-radius: 10px; padding: .6rem .8rem;
+}
+.lm.gap {
+  background: #fff7ed; border-color: #fdba74; box-shadow: inset 4px 0 0 #f97316;
+}
+.lm.gap .num { background: #f97316; min-width: auto; }
+.lm.gap .label { color: #9a3412; }
+.inc.gap-note { color: #9a3412; }
+@media (prefers-color-scheme: dark) {
+  .intro .how.gap-warn, .lm.gap { background: #3a1d0b; border-color: #7c2d12; }
+  .lm.gap .label, .inc.gap-note { color: #fdba74; }
+}
 
 .downloads { margin-top: 2rem; text-align: center; }
 .downloads a { color: var(--accent); }

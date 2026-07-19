@@ -32,14 +32,20 @@ if (files) {
   }
 }
 
-const dataPath = "src/_data/landmarks.json";
-if (existsSync(dataPath)) {
+const dataFiles = [
+  { path: "src/_data/landmarks.json", keys: ["ml_incipit", "dv_incipit"] },
+  { path: "src/_data/budding_grove.json", keys: ["ml_incipit"] },
+];
+let sawData = false;
+for (const { path: dataPath, keys } of dataFiles) {
+  if (!existsSync(dataPath)) continue;
+  sawData = true;
   const data = JSON.parse(readFileSync(dataPath, "utf8"));
   const tooLong = [];
   for (const lm of data.landmarks ?? []) {
-    for (const key of ["ml_incipit", "dv_incipit"]) {
+    for (const key of keys) {
       const n = String(lm[key] ?? "").trim().split(/\s+/).filter(Boolean).length;
-      if (n > INCIPIT_WORD_CAP) tooLong.push(`#${lm.n} ${key} = ${n} words`);
+      if (n > INCIPIT_WORD_CAP) tooLong.push(`${dataPath} #${lm.n} ${key} = ${n} words`);
     }
   }
   if (tooLong.length) {
@@ -48,8 +54,11 @@ if (existsSync(dataPath)) {
         tooLong.join("\n  ")
     );
   }
-} else {
-  failures.push(`Missing ${dataPath} \u2014 run the build pipeline first.`);
+}
+if (!sawData) {
+  failures.push(
+    `Missing landmark data (src/_data/landmarks.json or budding_grove.json) \u2014 run the build pipeline first.`
+  );
 }
 
 if (failures.length) {

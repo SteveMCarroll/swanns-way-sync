@@ -1,11 +1,12 @@
 export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });
   eleventyConfig.addPassthroughCopy({ "correspondence.csv": "correspondence.csv" });
+  eleventyConfig.addPassthroughCopy({ "correspondence_bg.csv": "correspondence_bg.csv" });
 
   eleventyConfig.addGlobalData("site", {
-    title: "Swann's Way \u2014 Reading Sync",
+    title: "Proust \u2014 Reading Sync",
     description:
-      "Landmark guideposts linking the Davis (Penguin) and Moncrieff (Modern Library) editions of Swann's Way to the audiobook, so you can switch between paper, ebook, and audio.",
+      "Landmark guideposts linking the Moncrieff (Modern Library) and Davis (Penguin) editions of Proust's novel to the audiobook, so you can switch between paper, ebook, and audio.",
   });
 
   eleventyConfig.addFilter("groupByPart", (landmarks) => {
@@ -18,6 +19,22 @@ export default function (eleventyConfig) {
     return order
       .filter((p) => groups.has(p))
       .map((p) => ({ part: p, items: groups.get(p) }));
+  });
+
+  eleventyConfig.addFilter("groupBySection", (landmarks) => {
+    const order = [
+      "Madame Swann at Home",
+      "Place-Names: The Place",
+      "Seascape, with Frieze of Girls",
+    ];
+    const groups = new Map();
+    for (const lm of landmarks ?? []) {
+      if (!groups.has(lm.section)) groups.set(lm.section, []);
+      groups.get(lm.section).push(lm);
+    }
+    return order
+      .filter((s) => groups.has(s))
+      .map((s) => ({ part: s, items: groups.get(s) }));
   });
 
   return {

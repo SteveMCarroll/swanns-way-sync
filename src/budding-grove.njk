@@ -1,0 +1,101 @@
+---
+layout: layouts/base.njk
+title: Within a Budding Grove
+permalink: /budding-grove/
+---
+<section class="intro">
+  <h1>Within a Budding Grove &mdash; switch between paper, ebook &amp; audio</h1>
+  <p>
+    <em>Within a Budding Grove</em> (Moncrieff / Modern Library) has almost no chapter
+    breaks, so this is a grid of {{ budding_grove.landmarks | length }} evenly spaced
+    <strong>landmarks</strong> (~10&nbsp;minutes of audio apart), each one falling on a
+    <strong>paragraph opening</strong>. Each gives you the exact physical page and the
+    audio timestamp.
+  </p>
+  <p class="how">
+    <strong>How to use:</strong> find the nearest landmark, jump the audiobook to its
+    <em>time</em>, or open your book to the page and <em>search the opening words</em> to
+    land on the exact spot. Page numbers reset between <strong>Part&nbsp;I</strong> and
+    <strong>Part&nbsp;II</strong> of the two-volume set, so each landmark shows its Part.
+  </p>
+  <p class="how gap-warn">
+    &#9888;&#65039; <strong>Heads up:</strong> this audiobook rip is missing two stretches of
+    text &mdash; Part&nbsp;II pp.99&ndash;120 and pp.267&ndash;303. The narration skips
+    straight across them. Those spots are flagged inline below; read them on paper or ebook.
+  </p>
+  <dl class="legend">
+    <dt>&#9201;&#65039; Audio</dt><dd>timestamp in the m4b (HH:MM:SS) and track #</dd>
+    <dt>Moncrieff</dt><dd>Part &amp; page in the Modern Library (2-volume) edition</dd>
+  </dl>
+</section>
+
+<div class="toolbar">
+  <input id="filter" type="search" placeholder="Filter by word, page or time&hellip;"
+         aria-label="Filter landmarks" autocomplete="off">
+  <nav class="jump" aria-label="Jump to section">
+    {%- for g in budding_grove.landmarks | groupBySection %}
+    <a href="#part-{{ loop.index }}">{{ g.part }}</a>
+    {%- endfor %}
+  </nav>
+</div>
+
+{%- for g in budding_grove.landmarks | groupBySection %}
+<section class="part" id="part-{{ loop.index }}">
+  <h2 class="part-title">{{ g.part }} <span class="count">{{ g.items | length }}</span></h2>
+  <div class="lm-list">
+    {%- for lm in g.items %}
+    {%- if lm.is_gap %}
+    <article class="lm gap" data-text="{{ lm.label }} gap missing not in recording pp {{ lm.gap_from }} {{ lm.gap_to }} {{ lm.audio_time }}">
+      <div class="lm-head">
+        <span class="num">&#9888;&#65039;</span>
+        <span class="label">Pt&nbsp;II pp.{{ lm.gap_from }}&ndash;{{ lm.gap_to }} not in this recording</span>
+        <a class="time" href="#" title="audio position">&#9201;&#65039; {{ lm.audio_time }}<small> &middot; tk{{ lm.audio_track }}</small></a>
+      </div>
+      <div class="incipits">
+        <p class="inc gap-note">These pages are missing from the audiobook rip &mdash; the
+          narration jumps straight to <strong>p.{{ lm.page }}</strong>. Use the paper book or
+          ebook for pp.{{ lm.gap_from }}&ndash;{{ lm.gap_to }}.</p>
+      </div>
+    </article>
+    {%- else %}
+    <article class="lm" data-text="{{ lm.label }} {{ lm.ml_incipit }} {{ lm.part }} p{{ lm.page }} {{ lm.audio_time }} track {{ lm.audio_track }}">
+      <div class="lm-head">
+        <span class="num">{{ lm.n }}</span>
+        <span class="label">{{ lm.part }} &middot; p.{{ lm.page }}{% if lm.scene %} &mdash; {{ lm.scene }}{% endif %}</span>
+        <a class="time" href="#" title="audio position">&#9201;&#65039; {{ lm.audio_time }}<small> &middot; tk{{ lm.audio_track }}</small></a>
+      </div>
+      <div class="chips">
+        <span class="chip monc">{{ lm.part }} p.<strong>{{ lm.page }}</strong><small>Modern Library</small></span>
+      </div>
+      <div class="incipits">
+        <p class="inc"><span class="ed">Moncrieff:</span> &ldquo;{{ lm.ml_incipit }}&hellip;&rdquo;</p>
+      </div>
+    </article>
+    {%- endif %}
+    {%- endfor %}
+  </div>
+</section>
+{%- endfor %}
+
+<p class="downloads">
+  <a href="{{ '/correspondence_bg.csv' | url }}">Download full table (CSV)</a>
+</p>
+
+<script>
+(function () {
+  var input = document.getElementById('filter');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.lm'));
+  function apply() {
+    var q = input.value.trim().toLowerCase();
+    cards.forEach(function (c) {
+      var hit = !q || c.getAttribute('data-text').toLowerCase().indexOf(q) !== -1;
+      c.style.display = hit ? '' : 'none';
+    });
+    document.querySelectorAll('.part').forEach(function (s) {
+      var any = s.querySelector('.lm:not([style*="none"])');
+      s.style.display = any ? '' : 'none';
+    });
+  }
+  input.addEventListener('input', apply);
+})();
+</script>
