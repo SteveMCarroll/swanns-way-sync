@@ -1,143 +1,183 @@
-"""Parse the Within a Budding Grove (Modern Library, 2-vol OCR) epub into page records.
+"""Parse the Within a Budding Grove (Modern Library / Moncrieff-Kilmartin-Enright)
+epub into *paragraph* records with interpolated physical page numbers.
 
-The epub stores one printed page per file (page_N.html) as a single OCR'd <p>. The
-printed page number maps linearly to the file index and *resets* at the Part I/II
-volume boundary:
+This is a clean digital text (proper spelling) wrapped by a feedbooks.com
+distribution. The <p> tags are NOT paragraphs -- the source chops the running text
+into arbitrary mid-sentence chunks, and real vs. arbitrary <p> breaks are
+indistinguishable in the markup. So this epub carries NO recoverable paragraph
+structure. That is fine: the actual sync-point paragraph boundaries come from the
+audiobook narration pauses (see snap_to_paragraphs in build_correspondence_bg); this
+module's job is only to provide a clean, ordered WORD STREAM with correct per-word
+part / section / physical-page metadata for page interpolation and incipit locating.
 
-    Part I : page_15..411  -> printed = N-14   (Madame Swann at Home 1-306; Place-Names 307-397)
-    Part II: page_413..768 -> printed = N-412  (Place-Names 1-120; Seascape 121-356)
+We drop the injected boilerplate (running headers "Within A Budding Grove", bare page
+numbers, "www.feedbooks.com" footers, front/back matter) and emit one record per
+surviving text chunk. Records are only carriers of the word stream + page metadata;
+their boundaries are not meaningful paragraph breaks.
 
-No book text is emitted by callers beyond short (<=8 word) incipit locators; this module
-just builds in-memory page records with word offsets, exact page numbers, and section.
+The epub's own page anchors (p1..p339, ~700 words/page) are a *different* edition's
+pagination and are ignored. Physical pages follow the user's paperback TOC:
+
+    Part One  MADAME SWANN AT HOME       -> p.1
+    Part Two  PLACE-NAMES: THE PLACE     -> p.299
+    (Notes)                              -> p.733   (text ends ~732)
+
+Pages are interpolated per part by word fraction (paragraphs are the reliable
+anchor; the exact page can drift by a page or two, which the paragraph guide makes
+survivable). No book text is published beyond short (<=8-word) incipit locators.
 """
 import html
 import os
 import re
-from dataclasses import dataclass, field
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
-# Extract dir (gitignored, lives in the main checkout). Override with BG_EPUB_DIR.
 _DEFAULT_EPUB = Path(
-    r"D:\source\proust-audio-sync\_extract\Within_a_Budding_Grove_Modern_Library\EPUB"
+    r"D:\source\proust-audio-sync\Within_a_Budding_Grove_Moncrieff_Enright.epub"
 )
-EPUB_DIR = Path(os.environ.get("BG_EPUB_DIR", str(_DEFAULT_EPUB)))
+EPUB_PATH = Path(os.environ.get("BG_EPUB", str(_DEFAULT_EPUB)))
 
-FIRST_CONTENT = 15
-LAST_CONTENT = 768
+SPLIT_FILES = [f"index_split_{i:03d}.html" for i in range(8)]
+
 INCIPIT_WORDS = 7          # published locator cap (policy <=8)
-MATCH_WORDS = 11           # longer phrase used only for audio matching (never published)
+MATCH_WORDS = 12           # longer phrase used only for audio matching (never published)
+
+# Physical-page anchors from the paperback table of contents.
+P1_PAGE = 1                # Part One first page
+P2_PAGE = 299              # Part Two first page
+END_PAGE = 733             # Notes begin here; text runs 1..732
+
+# Section opening sentences (used to locate part/section starts by content).
+# The paperback TOC has exactly two parts, so Part Two is uniformly Place-Names.
+PART_ONE_OPEN = "My mother, when it was a question of our having"
+PART_TWO_OPEN = "I had arrived at a state almost of complete indifference to Gilberte"
+
+# Running-header / boilerplate paragraphs to drop (normalised, lower-cased).
+_HEADERS = {
+    "within a budding grove", "madame swann at home", "place-names: the place",
+    "place-names the place", "seascape, with frieze of girls",
+    "remembrance of things past", "marcel proust", "proust, marcel",
+    "part i", "part ii", "part one", "part two", "www.feedbooks.com",
+}
 
 
 @dataclass
 class Page:
-    idx: int                 # page_N file number
+    idx: int                 # chunk sequence number within the novel
     part: str                # "Part I" | "Part II"
     section: str             # narrative movement
-    page: int                # printed page number (as in the physical book)
-    text: str                # cleaned narrative text (running header + page no. stripped)
+    page: int                # interpolated physical page (paperback)
+    text: str                # chunk text (arbitrary boundary, not a paragraph)
     word_start: int = 0
     nwords: int = 0
     reliable: bool = True
-    incipit: str = ""        # first ~7 narrative words
-    match: str = ""          # first ~11 narrative words (internal)
+    incipit: str = ""        # first ~7 words (seed only; final incipits come from audio)
+    match: str = ""          # first ~12 words (internal, for audio matching)
 
 
-def classify(idx: int):
-    """(part, section, printed_page) for a content page file index."""
-    if idx <= 411:
-        part = "Part I"
-        page = idx - 14
-        section = "Madame Swann at Home" if page <= 306 else "Place-Names: The Place"
-    else:
-        part = "Part II"
-        page = idx - 412
-        section = "Place-Names: The Place" if page <= 120 else "Seascape, with Frieze of Girls"
-    return part, section, page
+def _chunks() -> list[str]:
+    """Return the ordered clean text chunks, dropping injected boilerplate.
+
+    <p> boundaries are arbitrary; we keep every text chunk (stripped of the feedbooks
+    footer) and drop running headers, bare page numbers and all-caps section titles."""
+    out: list[str] = []
+    z = zipfile.ZipFile(EPUB_PATH)
+    for name in SPLIT_FILES:
+        raw = z.read(name).decode("utf-8", "replace")
+        body = re.search(r"<body[^>]*>(.*?)</body>", raw, re.S | re.I)
+        inner = body.group(1) if body else raw
+        for m in re.finditer(r"<p\b[^>]*>(.*?)</p>", inner, re.S | re.I):
+            txt = html.unescape(re.sub(r"(?s)<[^>]+>", " ", m.group(1)))
+            txt = re.sub(r"\s+", " ", txt).strip()
+            txt = re.sub(r"\s*www\.feedbooks\.com\s*", " ", txt, flags=re.I).strip()
+            low = txt.lower()
+            is_pagenum = bool(re.fullmatch(r"\d+", txt))
+            is_allcaps = (len(txt) < 60 and any(c.isalpha() for c in txt)
+                          and txt == txt.upper())
+            if not txt or low in _HEADERS or is_pagenum or is_allcaps:
+                continue
+            out.append(txt)
+    return out
 
 
-def _body_text(raw: str) -> str:
-    m = re.search(r"<body[^>]*>(.*?)</body>", raw, re.S | re.I)
-    inner = m.group(1) if m else raw
-    inner = re.sub(r"(?s)<[^>]+>", " ", inner)
-    return re.sub(r"\s+", " ", html.unescape(inner)).strip()
-
-
-def _is_header_tok(tok: str) -> bool:
-    """True for running-header noise: all-caps words (incl. OCR variants), single
-    letters, bare digits, or punctuation-only tokens."""
-    core = tok.strip(".,;:!?\"'()[]{}*-\u2014\u2019\u201c\u201d")
-    if not core:
-        return True
-    if core.isdigit():
-        return True
-    letters = [c for c in core if c.isalpha()]
-    if letters and all(c.isupper() for c in letters):
-        return True
-    return False
-
-
-def _strip_header(text: str) -> str:
-    """Drop the leading run of running-header / drop-cap tokens so the incipit starts
-    on real narrative wording."""
-    toks = text.split()
-    i = 0
-    while i < len(toks) and i < 14 and _is_header_tok(toks[i]):
-        i += 1
-    return " ".join(toks[i:])
-
-
-def _strip_trailing_pageno(text: str) -> str:
-    """Remove a trailing page-number token and short OCR noise at the page foot."""
-    toks = text.split()
-    while toks and _is_header_tok(toks[-1]):
-        toks.pop()
-    return " ".join(toks)
+def _find(chunks, prefix, start=0):
+    for i in range(start, len(chunks)):
+        if chunks[i].startswith(prefix):
+            return i
+    return -1
 
 
 def parse_budding_grove() -> list[Page]:
-    pages: list[Page] = []
-    wc = 0
-    for idx in range(FIRST_CONTENT, LAST_CONTENT + 1):
-        f = EPUB_DIR / f"page_{idx}.html"
-        if not f.exists():
-            continue
-        raw = f.read_text(encoding="utf-8", errors="replace")
-        body = _body_text(raw)
-        reliable = "estimated to be only" not in body.lower()
-        clean = _strip_trailing_pageno(_strip_header(body))
-        n = len(clean.split())
-        if n == 0:
-            continue
-        part, section, page = classify(idx)
-        words = clean.split()
-        pg = Page(
-            idx=idx, part=part, section=section, page=page, text=clean,
-            word_start=wc, nwords=n, reliable=reliable,
+    chunks = _chunks()
+
+    p1 = _find(chunks, PART_ONE_OPEN)
+    p2 = _find(chunks, PART_TWO_OPEN, p1 + 1)
+    if p1 < 0 or p2 < 0:
+        raise RuntimeError("could not locate Part One/Two openings in epub")
+
+    # novel end = first feedbooks back-matter chunk after Part Two
+    end = len(chunks)
+    for i in range(p2 + 1, len(chunks)):
+        low = chunks[i].lower()
+        if low.startswith(("loved this book", "\u2022")) or "similar users also downloaded" in low:
+            end = i
+            break
+
+    body = chunks[p1:end]
+    r_p2 = p2 - p1                            # relative Part Two start within `body`
+
+    # word offsets per chunk and Part boundary word span (for page interpolation)
+    offsets, wc = [], 0
+    for chunk in body:
+        offsets.append(wc)
+        wc += len(chunk.split())
+    total = wc
+    w_p2 = offsets[r_p2]                      # words at Part Two start
+
+    def page_for(w):
+        if w < w_p2:                          # Part One: pages [1, 299)
+            frac = w / w_p2 if w_p2 else 0.0
+            return max(P1_PAGE, min(P2_PAGE - 1, int(P1_PAGE + frac * (P2_PAGE - P1_PAGE))))
+        frac = (w - w_p2) / (total - w_p2) if total > w_p2 else 0.0
+        return max(P2_PAGE, min(END_PAGE - 1, int(P2_PAGE + frac * (END_PAGE - P2_PAGE))))
+
+    out: list[Page] = []
+    for i, chunk in enumerate(body):
+        if i < r_p2:
+            part, section = "Part I", "Madame Swann at Home"
+        else:
+            part, section = "Part II", "Place-Names: The Place"
+        words = chunk.split()
+        out.append(Page(
+            idx=i, part=part, section=section, page=page_for(offsets[i]),
+            text=chunk, word_start=offsets[i], nwords=len(words), reliable=True,
             incipit=" ".join(words[:INCIPIT_WORDS]),
             match=" ".join(words[:MATCH_WORDS]),
-        )
-        pages.append(pg)
-        wc += n
-    return pages
+        ))
+    return out
 
 
 if __name__ == "__main__":
     ps = parse_budding_grove()
     from collections import Counter
     words = Counter()
-    pagerange = {}
+    prange = {}
     for p in ps:
         words[p.section] += p.nwords
-        a, b = pagerange.get((p.part, p.section), (10**9, -1))
-        pagerange[(p.part, p.section)] = (min(a, p.page), max(b, p.page))
+        a, b = prange.get(p.section, (10**9, -1))
+        prange[p.section] = (min(a, p.page), max(b, p.page))
     total = sum(p.nwords for p in ps)
-    print(f"== {len(ps)} content pages, {total} words ==")
-    for (part, sec), (a, b) in pagerange.items():
-        print(f"  {part:7} {sec:32} pages {a}-{b}  ({words[sec]} words in section)")
-    print("\nUnreliable pages:", [p.idx for p in ps if not p.reliable])
+    print(f"== {len(ps)} chunks, {total} words ==")
+    for sec in ["Madame Swann at Home", "Place-Names: The Place"]:
+        if sec in prange:
+            a, b = prange[sec]
+            print(f"  {sec:34} pages {a}-{b}  ({words[sec]} words)")
     print("\nBoundary samples:")
-    for target in (15, 320, 321, 411, 413, 532, 533, 768):
-        for p in ps:
-            if p.idx == target:
-                print(f"  page_{p.idx} [{p.part} p{p.page} {p.section}]: {p.incipit!r}")
-                break
+    seen2 = [p for p in ps if p.page == P2_PAGE]
+    picks = ps[:1] + (seen2[:1] if seen2 else []) + ps[-1:]
+    for p in picks:
+        print(f"  [{p.part} p{p.page} {p.section}] {p.incipit!r}")
+    print("\nFirst 6 incipits:")
+    for p in ps[:6]:
+        print(f"  p{p.page:>3}: {p.incipit}")

@@ -29,15 +29,21 @@ M4B = OUT_DIR / "Within a Budding Grove.m4b"
 
 TARGET_SPACING_SEC = 600           # ~10 minutes between landmarks
 
+# The gutenberg.net.au source epub is clean except for a handful of stray scan
+# errors on proper nouns (e.g. "Combray" mis-scanned once as "Combfay", while the
+# other 45 occurrences are correct). Correct known single-instance errors so the
+# published incipit matches the printed book.
+INCIPIT_FIXES = {
+    "Combfay": "Combray",
+}
+
 SECTION_ORDER = [
     "Madame Swann at Home",
     "Place-Names: The Place",
-    "Seascape, with Frieze of Girls",
 ]
 SECTION_SHORT = {
     "Madame Swann at Home": "Madame Swann at Home",
     "Place-Names: The Place": "Place-Names",
-    "Seascape, with Frieze of Girls": "Seascape",
 }
 PART_SHORT = {"Part I": "Pt I", "Part II": "Pt II"}
 
@@ -48,12 +54,12 @@ PART_SHORT = {"Part I": "Pt I", "Part II": "Pt II"}
 # inside a gap are dropped and replaced by a single labelled marker chapter placed
 # where the audio resumes.
 KNOWN_GAPS = [
-    {"part": "Part II", "from_page": 99, "to_page": 120, "resume_page": 121,
+    {"part": "Part II", "from_page": 481, "to_page": 500, "resume_page": 501,
      "resume_seconds": 62486.0,                       # 17:21:26
-     "resume_section": "Seascape, with Frieze of Girls"},
-    {"part": "Part II", "from_page": 267, "to_page": 303, "resume_page": 304,
-     "resume_seconds": 81098.0,                       # 22:31:38
-     "resume_section": "Seascape, with Frieze of Girls"},
+     "resume_section": "Place-Names: The Place"},
+    {"part": "Part II", "from_page": 645, "to_page": 679, "resume_page": 680,
+     "resume_seconds": 80994.0,                       # 22:29:54
+     "resume_section": "Place-Names: The Place"},
 ]
 
 # Curated scene hints (single proper nouns / plain words — not protected expression).
@@ -246,6 +252,12 @@ def snap_to_paragraphs(rows, pages, window=200.0, pause=1.4):
         toks = traw[widx:widx + INCIPIT_WORDS]
         return " ".join(toks).strip()
 
+    def epub_incipit(s0):
+        s = " ".join(etok[s0:s0 + INCIPIT_WORDS]).strip()
+        for bad, good in INCIPIT_FIXES.items():
+            s = re.sub(rf"\b{re.escape(bad)}\b", good, s)
+        return s
+
     import bisect
     used = set()
     for r in rows:
@@ -269,9 +281,11 @@ def snap_to_paragraphs(rows, pages, window=200.0, pause=1.4):
         r["ml_incipit"] = clean_incipit(widx)
         r["audio_method"] = "para/" + r["audio_method"]
         # refine the epub page from this paragraph, but only if it stays consistent with
-        # the already-matched page (guards against OCR mislocation near ads / gaps)
+        # the already-matched page (guards against mislocation near ads / gaps). When the
+        # epub sentence-start aligns with the spoken opening word, publish the book's clean
+        # wording (proper spelling of names) instead of the phonetic transcript incipit.
         follow = tnorm[widx:widx + 12]
-        gi, sc = find_epub(follow, int(r["word_start"]))
+        gi, sc = find_epub(follow, int(r["word_start"]), span=6000)
         if gi >= 0 and sc >= 70:
             s0 = clean_start(gi)
             if s0 >= 0:
@@ -281,6 +295,14 @@ def snap_to_paragraphs(rows, pages, window=200.0, pause=1.4):
                     r["page"] = page
                     r["section"] = section
                     r["section_short"] = SECTION_SHORT[section]
+                if sc >= 84 and abs(s0 - gi) <= 2:
+                    a = " ".join(enorm[s0:s0 + INCIPIT_WORDS])
+                    c = " ".join(tnorm[widx:widx + INCIPIT_WORDS])
+                    if fuzz.ratio(a, c) >= 62:      # same passage; leading name may differ
+                        ci = epub_incipit(s0)
+                        head = ci.lstrip('"\'([\u201c\u2018\u2014\u2013- ')
+                        if head[:1].isupper() and 0 < len(ci.split()) <= INCIPIT_WORDS:
+                            r["ml_incipit"] = ci
     rows.sort(key=lambda r: r["audio_seconds"])
     for i in range(1, len(rows)):
         if rows[i]["audio_seconds"] < rows[i - 1]["audio_seconds"]:
@@ -544,7 +566,7 @@ def write_outputs(rows, duration):
         "n_landmarks": len(rows),
         "editions": {
             "audio": "Moncrieff-derived audiobook (m4b)",
-            "moncrieff": "Moncrieff / Modern Library (2-volume)",
+            "moncrieff": "Moncrieff / Modern Library (single-volume pagination)",
         },
         "audio_gaps": [
             {"part": g["part"], "from_page": g["from_page"], "to_page": g["to_page"],
